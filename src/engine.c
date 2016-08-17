@@ -42,6 +42,9 @@ struct _IBusArrayEngine
 
     IBusLookupTable *table;
     IBusPropList *prop_list;
+
+    gboolean shift_pressed;
+    gboolean english_mode;
 };
 
 struct _IBusArrayEngineClass
@@ -192,6 +195,8 @@ static void ibus_array_engine_init (IBusArrayEngine *arrayeng)
     arrayeng->preedit = g_string_new ("");
     arrayeng->cursor_pos = 0;
     arrayeng->space_press_count = 0;
+    arrayeng->shift_pressed = FALSE;
+    arrayeng->english_mode = FALSE;
 
     arrayeng->table = ibus_lookup_table_new (10, 0, FALSE, TRUE);
     g_object_ref_sink (arrayeng->table);
@@ -436,6 +441,21 @@ static gboolean  ibus_array_engine_process_key_event (IBusEngine *engine, guint 
     IBusText *text;
     IBusArrayEngine *arrayeng = (IBusArrayEngine *)engine;
 
+    if (keyval == IBUS_Shift_L || keyval == IBUS_Shift_R) {
+		ibus_array_engine_reset((IBusEngine*)arrayeng);
+		if(modifiers & IBUS_RELEASE_MASK && arrayeng->shift_pressed) {
+			arrayeng->english_mode = ~arrayeng->english_mode;
+		}
+		else {
+			arrayeng->shift_pressed = TRUE;
+		}
+		return FALSE;
+	}
+	else {
+		arrayeng->shift_pressed = FALSE;
+	}
+
+
     if (g_strcmp0(arrayeng->preedit->str, "w") == 0)
     {
         ibus_array_engine_update_auxiliary_text(arrayeng, _("1.comma 2.bracket 3.symbol 4.math 5.arrow 6.unit 7.table 8.roman 9.greek 0.bopomo"));
@@ -451,8 +471,6 @@ static gboolean  ibus_array_engine_process_key_event (IBusEngine *engine, guint 
     if (modifiers & IBUS_RELEASE_MASK)
         return FALSE;
 
-    if (keyval == IBUS_Shift_L || keyval == IBUS_Shift_R)
-        return FALSE;
 
     if (modifiers & (IBUS_CONTROL_MASK | IBUS_MOD1_MASK))
         return FALSE;
@@ -461,16 +479,29 @@ static gboolean  ibus_array_engine_process_key_event (IBusEngine *engine, guint 
     switch (keyval)
     {
     case IBUS_space:
-        if (arrayeng->preedit->len == 0)
+        if (arrayeng->preedit->len == 0) {
             return FALSE;
+		}
+        if(arrayeng->preedit->len > 5) {
+			g_string_insert_c (arrayeng->preedit, arrayeng->cursor_pos, keyval);
+			arrayeng->cursor_pos ++;
+			ibus_array_engine_update (arrayeng);
+			return TRUE;
+		}
         ibus_array_engine_space_press(arrayeng);
         return TRUE;
 
     case IBUS_Return:
         if (arrayeng->preedit->len == 0)
             return FALSE;
-        else
+        else {
+			IBusText *text;
+			text = ibus_text_new_from_string(arrayeng->preedit->str);
+			text->attrs = ibus_attr_list_new ();
+			ibus_engine_commit_text((IBusEngine*)arrayeng, text);
+			ibus_array_engine_reset((IBusEngine*)arrayeng);
             return TRUE;
+		}
 
     case IBUS_Escape:
         ibus_array_engine_reset((IBusEngine*)arrayeng);
@@ -506,6 +537,10 @@ static gboolean  ibus_array_engine_process_key_event (IBusEngine *engine, guint 
         }
         return TRUE; 
     }
+    
+    if(arrayeng->english_mode) {
+		return FALSE;
+	}
 
     if (arrayeng->preedit->len > 0 && (keyval >= IBUS_0 && keyval <= IBUS_9))
     {
@@ -523,7 +558,7 @@ static gboolean  ibus_array_engine_process_key_event (IBusEngine *engine, guint 
 
     if (is_alpha (keyval) || keyval == IBUS_period || keyval == IBUS_comma || keyval == IBUS_slash || keyval == IBUS_semicolon)
     {
-        if (arrayeng->space_press_count == 1)
+        if (arrayeng->space_press_count == 1) {
             if (arrayeng->table->candidates->len > 0)
             {
                 gboolean commit_rev;
@@ -532,11 +567,10 @@ static gboolean  ibus_array_engine_process_key_event (IBusEngine *engine, guint 
 
                 commit_rev = ibus_array_engine_commit_current_candidate(arrayeng);
             } else {
-		ibus_array_engine_reset((IBusEngine*)arrayeng);
+				ibus_array_engine_reset((IBusEngine*)arrayeng);
             }
+		}
 
-        if (arrayeng->preedit->len >= 5)
-                return TRUE;
 
         g_string_insert_c (arrayeng->preedit, arrayeng->cursor_pos, keyval);
 

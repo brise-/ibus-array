@@ -81,6 +81,12 @@ GString* array_get_preedit_string(GString *preedit) {
     int i;
     for (i = 0; i < preedit->len; i++) {
         gchar c = preedit->str[i];
+        
+        if(preedit->len > 5) {
+			g_string_append_c(result, c);
+			continue;
+		}
+		
         int index = -1;
 
         if (c >= 'a' && c <= 'z') {
